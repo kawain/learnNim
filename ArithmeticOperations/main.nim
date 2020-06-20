@@ -3,19 +3,20 @@ import sequtils
 import strutils
 import options
 
-
-var source: seq[char] = newSeq[char]()
-var sourceIndex: int = 0
-
-
-type TokenKind = enum
-  Punct      #記号
-  Intliteral #整数トークン
+var
+  input: seq[char] = newSeq[char]()
+  index: int = 0
 
 
-type Token = ref object
-  kind: TokenKind
-  value: string
+type
+  TokenKind = enum
+    Symbol
+    Number
+
+
+  Token = object
+    kind: TokenKind
+    value: string
 
 
 proc toString(str: seq[char]): string =
@@ -25,16 +26,16 @@ proc toString(str: seq[char]): string =
 
 
 proc getChar(): Option[char] =
-  if sourceIndex == source.len:
+  if index == input.len:
     return none(char)
 
-  var c: char = source[sourceIndex]
-  sourceIndex+=1
+  var c: char = input[index]
+  inc(index)
   some(c)
 
 
 proc ungetChar() =
-  sourceIndex-=1
+  dec(index)
 
 
 proc readNumber(c1: char): string =
@@ -44,8 +45,10 @@ proc readNumber(c1: char): string =
     var c: Option[char] = getChar()
     if c.isNone:
       break
-    if '0' <= c.get() and c.get() <= '9':
-      number.add(c.get())
+    if '0' <= c.get and c.get <= '9':
+      number.add(c.get)
+    elif '.' == c.get:
+      number.add(c.get)
     else:
       ungetChar()
       break
@@ -53,124 +56,103 @@ proc readNumber(c1: char): string =
   number.toString
 
 
-
 proc tokenize(): seq[Token] =
   var tokens = newSeq[Token]()
-  echo "# Tokens : "
 
   while true:
     var c: Option[char] = getChar()
     if c.isNone:
       break
 
-    case c.get()
+    case c.get
     of ' ', '\t', '\n':
       continue
     of '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
-      var intliteral = readNumber(c.get())
-      var token = Token(kind: Intliteral, value: intliteral)
+      var num = readNumber(c.get)
+      var token = Token(kind: Number, value: num)
       tokens.add(token)
-      echo token.value
-    of ';', '+', '-', '*', '/':
-      var s = $c.get()
-      var token = Token(kind: Punct, value: s)
+    of '+', '-', '*', '/', '(', ')':
+      var s = $c.get
+      var token = Token(kind: Symbol, value: s)
       tokens.add(token)
-      echo token.value
     else:
-      echo "tokenizer: Invalid char:" & c.get()
+      echo "tokenizer: Invalid char:" & c.get
 
   tokens
 
 
+# 操車場アルゴリズム
+proc syaParse(tokens: seq[Token]): seq[string] =
 
-var tokens: seq[Token] = newSeq[Token]()
-var tokenIndex: int = 0
+  var stack: seq[string] = newSeq[string]()
+  var queue: seq[string] = newSeq[string]()
 
-
-proc getToken(): Option[Token] =
-  if tokenIndex == tokens.len:
-    return none(Token)
-
-  var token: Token = tokens[tokenIndex]
-  tokenIndex+=1
-  some(token)
-
-
-type Expr = ref object
-  kind: string     # "intliteral", "unary"
-  intval: int      # for intliteral
-  operator: string # "-", "+", ...
-  operand: Expr    # for unary expr
-  left: Expr       # for binary expr
-  right: Expr      # for binary expr
-
-
-proc parseUnaryExpr(): Expr =
-  var token = getToken()
-  case token.get().kind
-  of Intliteral:
-    var i: int = token.get().value.parseInt
-    return Expr(kind: "intliteral", intval: i)
-  of Punct:
-    return Expr(
-      kind: "unary",
-      operator: token.get().value,
-      operand: parseUnaryExpr()
-    )
-
-
-proc parse(): Expr =
-  var expr = parseUnaryExpr()
-
-  while true:
-    var token = getToken()
-    if token.isNone or token.get().value == ";":
-      return expr
-
-    case token.get().value
-    of "+", "-", "*", "/":
-      return Expr(
-        kind: "binary",
-        operator: token.get().value,
-        left: expr,
-        right: parseUnaryExpr(),
-      )
+  for v in tokens:
+    if v.kind == Number:
+      queue.add(v.value)
     else:
-      discard
+      case v.value
+      of "+":
+        if stack.len > 0:
+          if stack[^1] == "*" or stack[^1] == "/":
+            queue.add(stack.pop)
+            if stack.len > 0:
+              if stack[^1] == "+" or stack[^1] == "-":
+                queue.add(stack.pop)
+        stack.add(v.value)
+      of "-":
+        if stack.len > 0:
+          if stack[^1] == "*" or stack[^1] == "/":
+            queue.add(stack.pop)
+            if stack.len > 0:
+              if stack[^1] == "+" or stack[^1] == "-":
+                queue.add(stack.pop)
+        stack.add(v.value)
+      of "*":
+        stack.add(v.value)
+      of "/":
+        stack.add(v.value)
+      of "(":
+        stack.add(v.value)
+      of ")":
+        # ( が現れるまで繰り返しpopしてqueueにadd
+        while true:
+          if stack.len > 0:
+            var p = stack.pop
+            queue.add(p)
+            if p == "(":
+              break
+          else:
+            break
+
+  while stack.len > 0:
+    queue.add(stack.pop)
+
+  result = queue.filterIt(it != "(")
 
 
+proc rpn(s: seq[string]): float =
 
-proc generateExpr(expr: Expr) =
-  case expr.kind
-  of "intliteral":
-    echo expr.intval
-  of "unary":
-    case expr.operator
-    of "-":
-      echo expr.operand.intval
-    of "+":
-      echo expr.operand.intval
-    else:
-      echo "generator: Unknown unary operator:", expr.operator
+  var stack: seq[float] = newSeq[float]()
 
-  of "binary":
-    echo expr.left.intval
-    echo expr.right.intval
-    case expr.operator
-    of "+":
-      echo "  addq %%rcx, %%rax"
-    of "-":
-      echo "  subq %%rcx, %%rax"
-    of "*":
-      echo "  imulq %%rcx, %%rax"
-    of "/":
-      echo "  movq $0, %%rdx"
-      echo "  idiv %%rcx"
-    else:
-      echo "generator: Unknown binary operator:", expr.operator
+  for v in s:
+    try:
+      stack.add(v.parseFloat)
+    except:
+      let n2 = stack.pop
+      let n1 = stack.pop
 
-  else:
-    echo "generator: Unknown expr.kind:", expr.kind
+      case v
+      of "+":
+        stack.add(n1+n2)
+      of "-":
+        stack.add(n1-n2)
+      of "*":
+        stack.add(n1*n2)
+      of "/":
+        stack.add(n1/n2)
+
+  stack[0]
 
 
 proc main() =
@@ -178,19 +160,21 @@ proc main() =
     echo "引数の個数が正しくありません"
     quit(1)
 
-  source = toSeq(commandLineParams()[0].items)
+  var original = commandLineParams()[0]
 
-  tokens = tokenize()
-  var expr = parse()
+  input = toSeq(original.items)
 
-  generateExpr(expr)
+  var tokens = tokenize()
 
-  echo expr[]
-  echo expr.left[]
-  echo expr.left.operand[]
-  echo expr.right[]
-  # writeLine(stdout,expr)
+  var rpnArr = syaParse(tokens)
 
+  echo "入力：", original
+
+  echo "出力：", rpnArr.join(" ")
+
+  let ans = rpn(rpnArr)
+
+  echo "回答：", ans
 
 
 
