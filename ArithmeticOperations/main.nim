@@ -1,5 +1,6 @@
 import os
 import sequtils
+import strutils
 import options
 
 
@@ -82,6 +83,96 @@ proc tokenize(): seq[Token] =
 
 
 
+var tokens: seq[Token] = newSeq[Token]()
+var tokenIndex: int = 0
+
+
+proc getToken(): Option[Token] =
+  if tokenIndex == tokens.len:
+    return none(Token)
+
+  var token: Token = tokens[tokenIndex]
+  tokenIndex+=1
+  some(token)
+
+
+type Expr = ref object
+  kind: string     # "intliteral", "unary"
+  intval: int      # for intliteral
+  operator: string # "-", "+", ...
+  operand: Expr    # for unary expr
+  left: Expr       # for binary expr
+  right: Expr      # for binary expr
+
+
+proc parseUnaryExpr(): Expr =
+  var token = getToken()
+  case token.get().kind
+  of Intliteral:
+    var i: int = token.get().value.parseInt
+    return Expr(kind: "intliteral", intval: i)
+  of Punct:
+    return Expr(
+      kind: "unary",
+      operator: token.get().value,
+      operand: parseUnaryExpr()
+    )
+
+
+proc parse(): Expr =
+  var expr = parseUnaryExpr()
+
+  while true:
+    var token = getToken()
+    if token.isNone or token.get().value == ";":
+      return expr
+
+    case token.get().value
+    of "+", "-", "*", "/":
+      return Expr(
+        kind: "binary",
+        operator: token.get().value,
+        left: expr,
+        right: parseUnaryExpr(),
+      )
+    else:
+      discard
+
+
+
+proc generateExpr(expr: Expr) =
+  case expr.kind
+  of "intliteral":
+    echo expr.intval
+  of "unary":
+    case expr.operator
+    of "-":
+      echo expr.operand.intval
+    of "+":
+      echo expr.operand.intval
+    else:
+      echo "generator: Unknown unary operator:", expr.operator
+
+  of "binary":
+    echo expr.left.intval
+    echo expr.right.intval
+    case expr.operator
+    of "+":
+      echo "  addq %%rcx, %%rax"
+    of "-":
+      echo "  subq %%rcx, %%rax"
+    of "*":
+      echo "  imulq %%rcx, %%rax"
+    of "/":
+      echo "  movq $0, %%rdx"
+      echo "  idiv %%rcx"
+    else:
+      echo "generator: Unknown binary operator:", expr.operator
+
+  else:
+    echo "generator: Unknown expr.kind:", expr.kind
+
+
 proc main() =
   if paramCount() != 1:
     echo "引数の個数が正しくありません"
@@ -89,9 +180,16 @@ proc main() =
 
   source = toSeq(commandLineParams()[0].items)
 
-  var tokens = tokenize()
+  tokens = tokenize()
+  var expr = parse()
 
-  echo "最後 ", tokens[0].value
+  generateExpr(expr)
+
+  echo expr[]
+  echo expr.left[]
+  echo expr.left.operand[]
+  echo expr.right[]
+  # writeLine(stdout,expr)
 
 
 
