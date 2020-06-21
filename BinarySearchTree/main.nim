@@ -58,14 +58,14 @@ proc main() =
     if i > 0:
       maketree(node, i, v)
 
-  echo node[]
-  echo node.right.get[]
-  echo node.right.get.right.get[]
-  echo node.right.get.right.get.right.get[]
-  echo "---"
-  echo node.left.get[]
-  echo node.left.get.left.get[]
-  echo node.left.get.left.get.left.get[]
+  # echo node[]
+  # echo node.right.get[]
+  # echo node.right.get.right.get[]
+  # echo node.right.get.right.get.right.get[]
+  # echo "---"
+  # echo node.left.get[]
+  # echo node.left.get.left.get[]
+  # echo node.left.get.left.get.left.get[]
 
   search(node)
 
